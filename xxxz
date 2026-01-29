@@ -1,0 +1,7 @@
+Sub all()
+Call FromInbox_ToDispute
+Call MarkAll_ImportantAccountDetails_AsRead_AllInboxes
+Call MoveToDPF_ByKeywords_NewestToOldest
+Call MoveToCaseCouncil_BySubject_NewestToOldest
+Call Delete_ITSystemNews_Now
+End Sub
