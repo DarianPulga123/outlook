@@ -1,0 +1,186 @@
+Option Explicit
+
+Private Const TARGET_FOLDER_NAME As String = "DPF"
+
+Public Sub MoveToDPF_ByKeywords_NewestToOldest()
+    On Error GoTo EH
+
+    Dim ns As Outlook.NameSpace
+    Set ns = Application.GetNamespace("MAPI")
+
+    ' Source folder: default Inbox
+    Dim inbox As Outlook.MAPIFolder
+    Set inbox = ns.GetDefaultFolder(olFolderInbox)
+
+    ' Target folder: Inbox\DPF (or nested anywhere under Inbox)
+    Dim target As Outlook.MAPIFolder
+    Set target = GetFolderUnderRoot(inbox, TARGET_FOLDER_NAME)
+
+    If target Is Nothing Then
+        MsgBox "Folder '" & TARGET_FOLDER_NAME & "' not found under: " & inbox.FolderPath, vbExclamation
+        Exit Sub
+    End If
+
+    ' Keywords/tokens to match (case-insensitive)
+    Dim tokens As Variant
+    tokens = Array( _
+        "matthias.holler@sap.com", _
+        "ingo.leib@dataport.de", _
+        "michael.fricke@dataport.de", _
+        "uwe.schulz@dataport.de", _
+        "dataportreisen@dataport.de", _
+        "henningchristian.kruse@dataport.de", _
+        "187989 Dataport AöR", _
+        "33079 Finanzbehörde Hamburg" _
+    )
+
+    ' Get items and sort by ReceivedTime (descending = newest first)
+    Dim items As Outlook.items
+    Set items = inbox.items
+    items.Sort "[ReceivedTime]", True
+
+    ' Because moving items while iterating can skip items,
+    ' first capture EntryIDs in sorted order, then process them.
+    Dim countItems As Long
+    countItems = items.Count
+
+    Dim ids() As String
+    If countItems > 0 Then ReDim ids(1 To countItems)
+
+    Dim i As Long
+    For i = 1 To countItems
+        Dim o As Object
+        Set o = items.Item(i)
+        If Not o Is Nothing Then
+            On Error Resume Next
+            ids(i) = o.EntryID
+            On Error GoTo EH
+        End If
+    Next i
+
+    Dim moved As Long
+    moved = 0
+
+    ' Process newest -> oldest (ids are in newest-first order)
+    For i = 1 To countItems
+        If Len(ids(i)) > 0 Then
+            Dim itm As Object
+            Set itm = ns.GetItemFromID(ids(i))
+
+            If Not itm Is Nothing Then
+                If TypeName(itm) = "MailItem" Then
+                    Dim mail As Outlook.MailItem
+                    Set mail = itm
+
+                    If MailMatchesAnyToken(mail, tokens) Then
+                        mail.Move target
+                        moved = moved + 1
+                    End If
+                End If
+            End If
+        End If
+    Next i
+
+    MsgBox "Done. Moved " & moved & " email(s) to '" & target.FolderPath & "' (newest to oldest).", vbInformation
+    Exit Sub
+
+EH:
+    MsgBox "Error " & Err.Number & ": " & Err.Description, vbExclamation
+End Sub
+
+' =========================
+' Matching logic
+' =========================
+Private Function MailMatchesAnyToken(ByVal mail As Outlook.MailItem, ByVal tokens As Variant) As Boolean
+    On Error GoTo EH
+
+    Dim haystack As String
+    haystack = ""
+
+    ' From: SMTP + display name
+    haystack = haystack & " " & GetSenderSmtpAddress(mail)
+    haystack = haystack & " " & mail.SenderName
+
+    ' Subject
+    haystack = haystack & " " & mail.Subject
+
+    ' Body (can be large; included because you said "contains this in the email")
+    haystack = haystack & " " & mail.Body
+
+    Dim t As Variant
+    For Each t In tokens
+        If InStr(1, haystack, CStr(t), vbTextCompare) > 0 Then
+            MailMatchesAnyToken = True
+            Exit Function
+        End If
+    Next t
+
+    MailMatchesAnyToken = False
+    Exit Function
+
+EH:
+    ' If something fails on a specific message, treat as non-match and continue
+    MailMatchesAnyToken = False
+End Function
+
+' Get sender SMTP address reliably (works with Exchange senders)
+Private Function GetSenderSmtpAddress(ByVal mail As Outlook.MailItem) As String
+    On Error GoTo EH
+
+    Dim smtp As String
+    smtp = ""
+
+    ' For SMTP accounts, this often works directly
+    On Error Resume Next
+    smtp = mail.SenderEmailAddress
+    On Error GoTo EH
+
+    ' For Exchange, SenderEmailAddress can be X.500; pull PR_SMTP_ADDRESS via PropertyAccessor
+    If InStr(1, smtp, "/O=", vbTextCompare) > 0 Or InStr(1, smtp, "EX", vbTextCompare) > 0 Then
+        Dim pa As Outlook.PropertyAccessor
+        Set pa = mail.PropertyAccessor
+
+        ' PR_SMTP_ADDRESS
+        smtp = CStr(pa.GetProperty("http://schemas.microsoft.com/mapi/proptag/0x39FE001E"))
+    End If
+
+    GetSenderSmtpAddress = smtp
+    Exit Function
+
+EH:
+    GetSenderSmtpAddress = ""
+End Function
+
+' =========================
+' Folder helpers
+' =========================
+Private Function GetFolderUnderRoot(ByVal root As Outlook.MAPIFolder, ByVal folderName As String) As Outlook.MAPIFolder
+    On Error Resume Next
+
+    ' Try direct child first
+    Set GetFolderUnderRoot = root.Folders(folderName)
+    If Not GetFolderUnderRoot Is Nothing Then Exit Function
+
+    ' Otherwise search recursively
+    Set GetFolderUnderRoot = FindFolderRecursive(root, folderName)
+End Function
+
+Private Function FindFolderRecursive(ByVal root As Outlook.MAPIFolder, ByVal nameToFind As String) As Outlook.MAPIFolder
+    Dim child As Outlook.MAPIFolder
+
+    For Each child In root.Folders
+        If LCase$(child.Name) = LCase$(nameToFind) Then
+            Set FindFolderRecursive = child
+            Exit Function
+        End If
+
+        Dim hit As Outlook.MAPIFolder
+        Set hit = FindFolderRecursive(child, nameToFind)
+        If Not hit Is Nothing Then
+            Set FindFolderRecursive = hit
+            Exit Function
+        End If
+    Next child
+
+    Set FindFolderRecursive = Nothing
+End Function
