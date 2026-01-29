@@ -1,0 +1,89 @@
+Option Explicit
+
+Private Const SUBJECT_PREFIX As String = "Case:00000"
+Private Const TARGET_FOLDER_NAME As String = "Dispute"
+
+' ==========================
+' RUN THIS MACRO
+' ==========================
+Public Sub FromInbox_ToDispute()
+    On Error GoTo EH
+
+    Dim ns As Outlook.NameSpace
+    Set ns = Application.GetNamespace("MAPI")
+
+    Dim inbox As Outlook.MAPIFolder
+    Set inbox = ns.GetDefaultFolder(olFolderInbox)
+
+    Dim target As Outlook.MAPIFolder
+    Set target = GetDisputeFolderUnderInbox(inbox, TARGET_FOLDER_NAME)
+
+    If target Is Nothing Then
+        MsgBox "Target folder not found under Inbox: " & TARGET_FOLDER_NAME, vbExclamation
+        Exit Sub
+    End If
+
+    Dim items As Outlook.items
+    Set items = inbox.items
+
+    Dim i As Long
+    Dim moved As Long
+    moved = 0
+
+    ' Loop backwards so Move doesn't mess up the index
+    For i = items.Count To 1 Step -1
+        Dim itm As Object
+        Set itm = items.Item(i)
+
+        If TypeName(itm) = "MailItem" Then
+            Dim mail As Outlook.MailItem
+            Set mail = itm
+
+            If LCase$(Left$(mail.Subject, Len(SUBJECT_PREFIX))) = LCase$(SUBJECT_PREFIX) Then
+                mail.Move target
+                moved = moved + 1
+            End If
+        End If
+    Next i
+
+    MsgBox "Done. Moved " & moved & " email(s) to '" & target.FolderPath & "'.", vbInformation
+    Exit Sub
+
+EH:
+    MsgBox "Error " & Err.Number & ": " & Err.Description, vbExclamation
+End Sub
+
+' ==========================
+' Helpers
+' ==========================
+Private Function GetDisputeFolderUnderInbox(ByVal inbox As Outlook.MAPIFolder, ByVal folderName As String) As Outlook.MAPIFolder
+    On Error Resume Next
+
+    ' First try direct child: Inbox\Dispute
+    Set GetDisputeFolderUnderInbox = inbox.Folders(folderName)
+    If Not GetDisputeFolderUnderInbox Is Nothing Then Exit Function
+
+    ' Otherwise search recursively under Inbox
+    Set GetDisputeFolderUnderInbox = FindFolderRecursive(inbox, folderName)
+End Function
+
+Private Function FindFolderRecursive(ByVal root As Outlook.MAPIFolder, ByVal nameToFind As String) As Outlook.MAPIFolder
+    Dim child As Outlook.MAPIFolder
+
+    For Each child In root.Folders
+        If LCase$(child.Name) = LCase$(nameToFind) Then
+            Set FindFolderRecursive = child
+            Exit Function
+        End If
+
+        Dim hit As Outlook.MAPIFolder
+        Set hit = FindFolderRecursive(child, nameToFind)
+        If Not hit Is Nothing Then
+            Set FindFolderRecursive = hit
+            Exit Function
+        End If
+    Next child
+
+    Set FindFolderRecursive = Nothing
+End Function
+
