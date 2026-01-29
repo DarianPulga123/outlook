@@ -1,0 +1,83 @@
+Option Explicit
+
+' Matches:
+' 35724 Important Account Details from 0023 ...
+' 3071719 Important Account Details from 0003 ...
+Private Const PHRASE As String = "Important Account Details from "
+
+Public Sub MarkAll_ImportantAccountDetails_AsRead_AllInboxes()
+    On Error GoTo EH
+
+    Dim ns As Outlook.NameSpace
+    Set ns = Application.GetNamespace("MAPI")
+
+    Dim totalChanged As Long
+    totalChanged = 0
+
+    Dim st As Outlook.store
+    For Each st In ns.Stores
+
+        Dim inbox As Outlook.MAPIFolder
+        On Error Resume Next
+        Set inbox = st.GetDefaultFolder(olFolderInbox)
+        On Error GoTo EH
+
+        If Not inbox Is Nothing Then
+            totalChanged = totalChanged + MarkFolderUnreadMatchesAsRead(inbox)
+        End If
+
+        Set inbox = Nothing
+    Next st
+
+    MsgBox "Done. Marked " & totalChanged & " email(s) as read across all Inboxes.", vbInformation
+    Exit Sub
+
+EH:
+    MsgBox "Error " & Err.Number & ": " & Err.Description, vbExclamation
+End Sub
+
+' --- Helper: marks unread mails as read in one folder (Inbox) ---
+Private Function MarkFolderUnreadMatchesAsRead(ByVal folder As Outlook.MAPIFolder) As Long
+    On Error GoTo EH
+
+    Dim changed As Long
+    changed = 0
+
+    ' Only process unread items to speed things up
+    Dim items As Outlook.items
+    Set items = folder.items
+
+    Dim restricted As Outlook.items
+    Set restricted = items.Restrict("[UnRead] = True")
+
+    ' Regex for: leading digits + space + phrase + 4 digits
+    Dim re As Object
+    Set re = CreateObject("VBScript.RegExp")
+    re.IgnoreCase = True
+    re.Global = False
+    re.Pattern = "^\d+\s+Important Account Details from\s+\d{4}\b"
+
+    Dim i As Long
+    For i = restricted.Count To 1 Step -1
+        Dim itm As Object
+        Set itm = restricted.Item(i)
+
+        If TypeName(itm) = "MailItem" Then
+            Dim mail As Outlook.MailItem
+            Set mail = itm
+
+            If re.Test(mail.Subject) Then
+                mail.UnRead = False
+                mail.Save
+                changed = changed + 1
+            End If
+        End If
+    Next i
+
+    MarkFolderUnreadMatchesAsRead = changed
+    Exit Function
+
+EH:
+    ' If one mailbox/folder errors, skip it rather than fail the entire run
+    MarkFolderUnreadMatchesAsRead = changed
+End Function
