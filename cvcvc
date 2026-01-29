@@ -1,0 +1,87 @@
+Option Explicit
+
+Private Const TARGET_SENDER1 As String = "it.system.news@sap.com"
+Private Const TARGET_SENDER2 As String = "benefity@mail.pluxee.cz"
+
+Public Sub Delete_ITSystemNews_Now()
+    Dim ns As Outlook.NameSpace
+    Dim inbox As Outlook.MAPIFolder
+    Dim deleted As Outlook.MAPIFolder
+    Dim items As Outlook.items
+    Dim i As Long
+
+    Dim m As Outlook.MailItem
+    Dim senderSmtp As String
+    Dim movedCount As Long
+    Dim errCount As Long
+
+    Set ns = Application.GetNamespace("MAPI")
+    Set inbox = ns.GetDefaultFolder(olFolderInbox)
+    Set deleted = ns.GetDefaultFolder(olFolderDeletedItems)
+
+    Set items = inbox.items
+    items.Sort "[ReceivedTime]", True  ' newest first
+
+    For i = items.Count To 1 Step -1
+If TypeName(items(i)) = "MailItem" Then
+    Dim mail As Outlook.MailItem
+    Set mail = items(i)
+
+    Dim smtp As String
+    On Error Resume Next
+    smtp = LCase$(mail.SenderEmailAddress)
+    If Err.Number <> 0 Then Err.Clear
+    On Error GoTo 0
+
+    If smtp = LCase$(TARGET_SENDER1) _
+       Or smtp = LCase$(TARGET_SENDER2) Then
+        mail.Move deleted
+    End If
+End If
+    Next i
+
+    MsgBox "Done. Moved " & movedCount & " matching email(s) to Deleted Items." & _
+           IIf(errCount > 0, vbCrLf & "Note: " & errCount & " item(s) had sender lookup issues and were skipped.", ""), _
+           vbInformation
+End Sub
+
+Private Function GetSenderSmtpAddress(ByVal m As Outlook.MailItem) As String
+    ' Best-effort: returns SMTP address when possible; empty string if unknown.
+    On Error GoTo Fail
+
+    Dim addr As String
+    addr = m.SenderEmailAddress
+
+    ' If it's already SMTP, we're done.
+    If LCase$(m.SenderEmailType) = "smtp" Then
+        GetSenderSmtpAddress = addr
+        Exit Function
+    End If
+
+    ' Exchange user / DL (can be Nothing)
+    If LCase$(m.SenderEmailType) = "ex" Then
+        Dim exUser As Outlook.ExchangeUser
+        Set exUser = m.Sender.GetExchangeUser
+        If Not exUser Is Nothing Then
+            GetSenderSmtpAddress = exUser.PrimarySmtpAddress
+            Exit Function
+        End If
+
+        Dim exDL As Outlook.ExchangeDistributionList
+        Set exDL = m.Sender.GetExchangeDistributionList
+        If Not exDL Is Nothing Then
+            GetSenderSmtpAddress = exDL.PrimarySmtpAddress
+            Exit Function
+        End If
+    End If
+
+    ' Fallback: PR_SMTP_ADDRESS (works for many Exchange scenarios)
+    Dim pa As Outlook.PropertyAccessor
+    Set pa = m.PropertyAccessor
+    GetSenderSmtpAddress = pa.GetProperty("http://schemas.microsoft.com/mapi/proptag/0x39FE001E")
+    Exit Function
+
+Fail:
+    ' Last-resort fallback
+    GetSenderSmtpAddress = addr
+End Function
