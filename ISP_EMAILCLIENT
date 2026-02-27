@@ -1,0 +1,100 @@
+Sub RunZEBillReport_Integrated()
+    Dim SapGuiAuto As Object, App As Object, Connection As Object, Session As Object
+    
+    ' --- 1. CONNECT TO SAP ---
+    On Error Resume Next
+    Set SapGuiAuto = GetObject("SAPGUI")
+    Set App = SapGuiAuto.GetScriptingEngine
+    Set Connection = App.Children(0)
+    Set Session = Connection.Children(0)
+    On Error GoTo 0
+    
+    If Session Is Nothing Then
+        MsgBox "Please log into SAP first.", vbCritical
+        Exit Sub
+    End If
+
+    ' --- 2. SELECTION SCREEN ---
+    Session.findById("wnd[0]").Maximize
+    Session.findById("wnd[0]/tbar[0]/okcd").Text = "ZEBILLREPORT"
+    Session.findById("wnd[0]").sendVKey 0
+    
+    ' Fill Company Code
+    Session.findById("wnd[0]/usr/ctxtSO_BUKRS-LOW").Text = "0023"
+    Session.findById("wnd[0]/usr/btn%_SO_BUKRS_%_APP_%-VALU_PUSH").press
+    Session.findById("wnd[1]/usr/tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE/ctxtRSCSEL_255-SLOW_I[1,1]").Text = "0003"
+    Session.findById("wnd[1]/usr/tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE/ctxtRSCSEL_255-SLOW_I[1,2]").Text = "0002"
+    Session.findById("wnd[1]/usr/tabsTAB_STRIP/tabpSIVA/ssubSCREEN_HEADER:SAPLALDB:3010/tblSAPLALDBSINGLE/ctxtRSCSEL_255-SLOW_I[1,3]").Text = "0007"
+    Session.findById("wnd[1]/tbar[0]/btn[8]").press
+
+    ' Fill Business Partner IDs (Clipboard Fix to prevent crash)
+    Session.findById("wnd[0]/usr/btn%_SO_GPART_%_APP_%-VALU_PUSH").press
+    
+    Dim idList As String
+    idList = "777823" & vbCrLf & "468362" & vbCrLf & "2799630" & vbCrLf & "1861115" & vbCrLf & _
+             "187989" & vbCrLf & "857218" & vbCrLf & "2846010" & vbCrLf & "726297" & vbCrLf & _
+             "673646" & vbCrLf & "333817" & vbCrLf & "761717" & vbCrLf & "205475"
+
+    Dim DataObj As Object
+    Set DataObj = CreateObject("New:{1C3B4210-F441-11CE-B9EA-00AA006B1A69}")
+    DataObj.SetText idList
+    DataObj.PutInClipboard
+
+    Session.findById("wnd[1]/tbar[0]/btn[24]").press
+    Session.findById("wnd[1]/tbar[0]/btn[8]").press
+    
+    ' Execute Report
+    Session.findById("wnd[0]/tbar[1]/btn[8]").press
+
+    ' --- 3. CHANGE LAYOUT (YOUR EXACT SCRIPT) ---
+    Session.findById("wnd[0]/tbar[1]/btn[32]").press
+    
+    ' Reset Columns
+    Session.findById("wnd[1]/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_CONFIGURATION:SAPLSALV_CUL_COLUMN_SELECTION:0620/cntlCONTAINER2_LAYO/shellcont/shell").setCurrentCell -1, ""
+    Session.findById("wnd[1]/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_CONFIGURATION:SAPLSALV_CUL_COLUMN_SELECTION:0620/cntlCONTAINER2_LAYO/shellcont/shell").SelectAll
+    Session.findById("wnd[1]/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_CONFIGURATION:SAPLSALV_CUL_COLUMN_SELECTION:0620/btnAPP_FL_SING").press
+    
+    ' Add ERP Account ID
+    Session.findById("wnd[1]/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_CONFIGURATION:SAPLSALV_CUL_COLUMN_SELECTION:0620/cntlCONTAINER1_LAYO/shellcont/shell").pressToolbarButton "&FIND"
+    Session.findById("wnd[2]/usr/txtGS_SEARCH-VALUE").Text = "ERP Account ID"
+    Session.findById("wnd[2]/usr/txtGS_SEARCH-VALUE").caretPosition = 14
+    Session.findById("wnd[2]/tbar[0]/btn[0]").press
+    Session.findById("wnd[2]").Close
+    Session.findById("wnd[1]/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_CONFIGURATION:SAPLSALV_CUL_COLUMN_SELECTION:0620/cntlCONTAINER1_LAYO/shellcont/shell").selectedRows = "0"
+    Session.findById("wnd[1]/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_CONFIGURATION:SAPLSALV_CUL_COLUMN_SELECTION:0620/btnAPP_WL_SING").press
+    
+    ' Add E-Mail Address
+    Session.findById("wnd[1]/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_CONFIGURATION:SAPLSALV_CUL_COLUMN_SELECTION:0620/cntlCONTAINER1_LAYO/shellcont/shell").pressToolbarButton "&FIND"
+    Session.findById("wnd[2]/usr/txtGS_SEARCH-VALUE").Text = "E-Mail Address"
+    Session.findById("wnd[2]/usr/txtGS_SEARCH-VALUE").caretPosition = 14
+    Session.findById("wnd[2]").sendVKey 0
+    Session.findById("wnd[2]").Close
+    Session.findById("wnd[1]/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_CONFIGURATION:SAPLSALV_CUL_COLUMN_SELECTION:0620/cntlCONTAINER1_LAYO/shellcont/shell").selectedRows = "17"
+    Session.findById("wnd[1]/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_CONFIGURATION:SAPLSALV_CUL_COLUMN_SELECTION:0620/btnAPP_WL_SING").press
+    
+    ' Add Company Code
+    Session.findById("wnd[1]/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_CONFIGURATION:SAPLSALV_CUL_COLUMN_SELECTION:0620/cntlCONTAINER1_LAYO/shellcont/shell").pressToolbarButton "&FIND"
+    Session.findById("wnd[2]/usr/txtGS_SEARCH-VALUE").Text = "Company Code"
+    Session.findById("wnd[2]/usr/txtGS_SEARCH-VALUE").caretPosition = 12
+    Session.findById("wnd[2]/tbar[0]/btn[0]").press
+    Session.findById("wnd[2]").Close
+    Session.findById("wnd[1]/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_CONFIGURATION:SAPLSALV_CUL_COLUMN_SELECTION:0620/cntlCONTAINER1_LAYO/shellcont/shell").selectedRows = "7"
+    Session.findById("wnd[1]/usr/tabsG_TS_ALV/tabpALV_M_R1/ssubSUB_CONFIGURATION:SAPLSALV_CUL_COLUMN_SELECTION:0620/btnAPP_WL_SING").press
+    
+    ' Confirm Layout
+    Session.findById("wnd[1]/tbar[0]/btn[0]").press
+
+    ' --- 4. EXPORT & EXIT ---
+    Session.findById("wnd[0]/tbar[1]/btn[46]").press
+    Session.findById("wnd[0]/tbar[1]/btn[45]").press
+    Session.findById("wnd[1]/usr/subSUBSCREEN_STEPLOOP:SAPLSPO5:0150/sub:SAPLSPO5:0150/radSPOPLI-SELFLAG[2,0]").Select
+    Session.findById("wnd[1]/tbar[0]/btn[0]").press
+    Session.findById("wnd[1]/tbar[0]/btn[20]").press
+    Session.findById("wnd[1]/tbar[0]/btn[0]").press
+    
+    ' Exit 3 times
+    Session.findById("wnd[0]/tbar[0]/btn[3]").press
+    Session.findById("wnd[0]/tbar[0]/btn[3]").press
+    Session.findById("wnd[0]/tbar[0]/btn[3]").press
+
+End Sub
